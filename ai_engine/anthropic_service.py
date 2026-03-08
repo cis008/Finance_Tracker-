@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Optional
 
 
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
 
 def _get_client():
@@ -62,7 +63,13 @@ def ai_categorize_description(description: str) -> Optional[dict]:
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text if resp.content else ""
-        parsed = json.loads(text)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", text, re.DOTALL)
+            if not match:
+                return None
+            parsed = json.loads(match.group(0))
 
         category = str(parsed.get("category", "")).strip() or "Other"
         icon = str(parsed.get("icon", "📦")).strip() or "📦"
