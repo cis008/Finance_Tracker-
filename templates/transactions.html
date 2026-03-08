@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Transactions — FinanceAI{% endblock %}
+{% block nav_transactions %}active{% endblock %}
+{% block page_title %}Transactions{% endblock %}
+
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px;">
+    <form id="add-form" onsubmit="submitTransaction(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Type</label>
+                <select class="form-control" id="f-type">
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (₹)</label>
+                <input class="form-control" type="number" id="f-amount" step="0.01" min="0" required placeholder="0.00">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Description</label>
+            <input class="form-control" type="text" id="f-desc" required placeholder="Transaction details">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Category (optional)</label>
+                <input class="form-control" type="text" id="f-category" placeholder="Food, Salary, Travel...">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date</label>
+                <input class="form-control" type="date" id="f-date" required>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">Add Transaction</button>
+    </form>
+</div>
+
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div class="card-title" style="margin:0;">Recent Transactions</div>
+        <div style="font-size:0.82rem;color:var(--text-muted);" id="tx-count"></div>
+    </div>
+    <div id="tx-list">
+        <div class="skeleton" style="height:58px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:58px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:58px;"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allTransactions = [];
+
+    async function loadTransactions() {
+        try {
+            const res = await fetch('/api/transactions/');
+            if (!res.ok) throw new Error('Failed to load transactions');
+            const data = await res.json();
+            allTransactions = data.transactions || [];
+            renderTransactions(allTransactions);
+        } catch (e) {
+            document.getElementById('tx-list').innerHTML = `<div class="empty-state"><p>Unable to load transactions</p></div>`;
+        }
+    }
+
+    async function submitTransaction(e) {
+        e.preventDefault();
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+
+        const payload = {
+            transaction_type: document.getElementById('f-type').value,
+            amount: document.getElementById('f-amount').value,
+            description: document.getElementById('f-desc').value,
+            category_name: document.getElementById('f-category').value,
+            date: document.getElementById('f-date').value,
+            notes: ''
+        };
+
+        try {
+            const res = await fetch('/api/transactions/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                showToast(errorData.error || 'Failed to add transaction', 'error');
+                return;
+            }
+
+            showToast('Transaction added', 'success');
+            document.getElementById('add-form').reset();
+            document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+            loadTransactions();
+        } catch (e) {
+            showToast('Failed to add transaction', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Add Transaction';
+        }
+    }
+
+    function renderTransactions(list) {
+        document.getElementById('tx-count').textContent = `${list.length} records`;
+        const el = document.getElementById('tx-list');
+        if (!list.length) {
+            el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">💸</div><p>No transactions found</p></div>`;
+            return;
+        }
+
+        el.innerHTML = `
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Category</th>
+        <th>Date</th>
+        <th>Type</th>
+        <th style="text-align:right;">Amount</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      ${list.map(t => {
+            const sign = t.transaction_type === 'income' ? '+' : '-';
+            const cls = t.transaction_type;
+            return `<tr>
+          <td>${t.category_icon} ${t.description}</td>
+          <td><span class="badge badge-info">${t.category_name}</span></td>
+          <td>${t.date}</td>
+          <td><span class="badge badge-${cls}">${t.transaction_type}</span></td>
+          <td style="text-align:right;" class="t-amount ${cls}">${sign}${formatCurrency(t.amount)}</td>
+          <td style="text-align:right;">
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTransaction(${t.id})" title="Delete">🗑</button>
+          </td>
+        </tr>`;
+        }).join('')}
+    </tbody>
+  </table>`;
+    }
+
+    async function deleteTransaction(id) {
+        if (!confirm('Delete this transaction?')) return;
+        const res = await fetch(`/api/transactions/${id}/`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Transaction deleted', 'success');
+            loadTransactions();
+        } else {
+            showToast('Failed to delete', 'error');
+        }
+    }
+
+    document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+    loadTransactions();
+</script>
+{% endblock %}

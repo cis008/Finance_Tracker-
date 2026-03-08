@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Analytics — FinanceAI{% endblock %}
+{% block nav_analytics %}active{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+
+{% block content %}
+
+<!-- Top row: bar + line charts -->
+<div class="grid-2" style="margin-bottom:24px;">
+    <div class="card">
+        <div class="card-title">Monthly Income vs Expense</div>
+        <div class="chart-container">
+            <canvas id="barChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">Net Savings Trend</div>
+        <div class="chart-container">
+            <canvas id="lineChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Category breakdown + AI predictions -->
+<div class="grid-2" style="margin-bottom:24px;">
+    <div class="card">
+        <div class="card-title">Spending by Category (This Month)</div>
+        <div id="breakdown-list" style="margin-top:12px;">
+            <div class="skeleton" style="height:40px;margin-bottom:10px;"></div>
+            <div class="skeleton" style="height:40px;margin-bottom:10px;"></div>
+            <div class="skeleton" style="height:40px;"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">🔮 Next Month Predictions</div>
+        <div id="predictions-container" style="margin-top:12px;">
+            <div class="skeleton" style="height:80px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Category pie chart -->
+<div class="card">
+    <div class="card-title">Category Distribution</div>
+    <div class="chart-container">
+        <canvas id="pieChart"></canvas>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadAnalytics() {
+        const [trendRes, breakdownRes, predRes] = await Promise.all([
+            fetch('/api/analytics/monthly/?months=6'),
+            fetch('/api/analytics/breakdown/'),
+            fetch('/api/ai/predict/'),
+        ]);
+        const { trend } = await trendRes.json();
+        const { breakdown } = await breakdownRes.json();
+        const { predictions } = await predRes.json();
+
+        // Bar chart: income vs expense
+        new Chart(document.getElementById('barChart'), {
+            type: 'bar',
+            data: {
+                labels: trend.map(t => t.month),
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: trend.map(t => t.income),
+                        backgroundColor: 'rgba(34,211,163,0.55)',
+                        borderColor: '#22d3a3',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    },
+                    {
+                        label: 'Expense',
+                        data: trend.map(t => t.expense),
+                        backgroundColor: 'rgba(247,95,95,0.55)',
+                        borderColor: '#f75f5f',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { ticks: { callback: v => '₹' + v.toLocaleString('en-IN') }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        });
+
+        // Line chart: net savings
+        new Chart(document.getElementById('lineChart'), {
+            type: 'line',
+            data: {
+                labels: trend.map(t => t.month),
+                datasets: [{
+                    label: 'Net Savings',
+                    data: trend.map(t => t.net),
+                    borderColor: '#4f8ef7',
+                    backgroundColor: 'rgba(79,142,247,0.12)',
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#4f8ef7',
+                    pointRadius: 5,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { ticks: { callback: v => '₹' + v.toLocaleString('en-IN') }, grid: { color: 'rgba(255,255,255,0.04)' } }
+                }
+            }
+        });
+
+        // Category breakdown list with progress bars
+        const bdEl = document.getElementById('breakdown-list');
+        const maxAmt = breakdown.length ? breakdown[0].amount : 1;
+        bdEl.innerHTML = breakdown.length ? breakdown.map(b => `
+    <div class="progress-wrap">
+      <div class="progress-header">
+        <div class="progress-label"><span>${b.icon}</span> ${b.category}</div>
+        <div class="progress-values">${formatCurrency(b.amount)} · ${b.percentage}%</div>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" style="width:${b.percentage}%;background:${b.color};"></div>
+      </div>
+    </div>`).join('') :
+            '<div class="empty-state"><div class="empty-icon">📊</div><p>No expense data this month</p></div>';
+
+        // Pie chart
+        new Chart(document.getElementById('pieChart'), {
+            type: 'pie',
+            data: {
+                labels: breakdown.map(b => `${b.icon} ${b.category}`),
+                datasets: [{
+                    data: breakdown.map(b => b.amount),
+                    backgroundColor: breakdown.map(b => b.color + 'cc'),
+                    borderColor: breakdown.map(b => b.color),
+                    borderWidth: 2,
+                    hoverOffset: 10,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { boxWidth: 13, padding: 14 } } }
+            }
+        });
+
+        // Predictions
+        const pEl = document.getElementById('predictions-container');
+        pEl.innerHTML = predictions.length ? `<div class="prediction-grid">${predictions.slice(0, 6).map(p => {
+            const trendIcon = p.trend === 'up' ? '↑' : p.trend === 'down' ? '↓' : '→';
+            const trendCls = p.trend;
+            return `<div class="prediction-card">
+      <div class="pred-header">
+        <div class="pred-icon">${p.icon}</div>
+        <div class="pred-cat">${p.category}</div>
+      </div>
+      <div class="pred-amount">${formatCurrency(p.predicted_amount)}</div>
+      <div class="pred-meta">Avg: ${formatCurrency(p.historical_avg)} · Conf: ${Math.round(p.confidence_score * 100)}%</div>
+      <div class="pred-trend ${trendCls}">${trendIcon} ${p.trend} vs history</div>
+    </div>`}).join('')}</div>` :
+            '<div class="empty-state"><div class="empty-icon">🔮</div><p>Add more transactions to unlock predictions</p></div>';
+    }
+
+    loadAnalytics();
+</script>
+{% endblock %}

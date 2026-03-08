@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Budgets — FinanceAI{% endblock %}
+{% block nav_budgets %}active{% endblock %}
+{% block page_title %}Budgets{% endblock %}
+
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-title" style="margin-bottom:12px;">Set Budget</div>
+    <div class="filters-bar" style="margin-bottom:12px;">
+        <span style="font-size:0.85rem;color:var(--text-secondary);">View month:</span>
+        <select class="form-control" id="budget-month" onchange="loadBudgets()" style="width:auto;"></select>
+    </div>
+
+    <form id="budget-form" onsubmit="submitBudget(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Category</label>
+                <select class="form-control" id="b-cat" required>
+                    <option value="">Select category…</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Monthly Limit (₹)</label>
+                <input class="form-control" type="number" id="b-limit" step="100" min="1" required placeholder="5000">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Month</label>
+                <select class="form-control" id="b-month" required></select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:end;">
+                <button type="submit" class="btn btn-primary" id="budget-submit-btn">Save Budget</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-title">Summary</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:0.88rem;">
+        <div>Total: <strong id="b-total">—</strong></div>
+        <div>Spent: <strong id="b-spent">—</strong></div>
+        <div>Remaining: <strong id="b-remaining">—</strong></div>
+        <div>Usage: <strong id="b-pct">—</strong></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Budget Tracker</div>
+    <div id="budget-list" style="margin-top:16px;">
+        <div class="skeleton" style="height:60px;margin-bottom:12px;"></div>
+        <div class="skeleton" style="height:60px;margin-bottom:12px;"></div>
+        <div class="skeleton" style="height:60px;"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+
+    // Populate month selectors
+    function populateMonthDropdowns() {
+        [document.getElementById('budget-month'), document.getElementById('b-month')].forEach(sel => {
+            sel.innerHTML = '';
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const opt = document.createElement('option');
+                opt.value = `${d.getMonth() + 1}-${d.getFullYear()}`;
+                opt.textContent = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                if (i === 0) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        });
+    }
+    populateMonthDropdowns();
+
+    async function loadBudgets() {
+        const mv = document.getElementById('budget-month').value;
+        const [m, y] = mv.split('-');
+        const res = await fetch(`/api/budgets/?month=${m}&year=${y}`);
+        const data = await res.json();
+        const budgets = data.budgets;
+
+        // Summary stats
+        const totalLimit = budgets.reduce((a, b) => a + b.monthly_limit, 0);
+        const totalSpent = budgets.reduce((a, b) => a + b.actual, 0);
+        const remaining = totalLimit - totalSpent;
+        const pct = totalLimit ? Math.round(totalSpent / totalLimit * 100) : 0;
+
+        document.getElementById('b-total').textContent = formatCurrency(totalLimit);
+        document.getElementById('b-spent').textContent = formatCurrency(totalSpent);
+        document.getElementById('b-remaining').textContent = formatCurrency(remaining);
+        document.getElementById('b-pct').textContent = pct + '%';
+
+        // Budget list
+        const el = document.getElementById('budget-list');
+        if (!budgets.length) {
+            el.innerHTML = `<div class="empty-state">
+            <p>No budgets set for this month.</p>
+    </div>`;
+            return;
+        }
+
+        el.innerHTML = budgets.map(b => {
+            const cls = b.status === 'over' ? 'over' : b.status === 'warning' ? 'warning' : '';
+            const statusIcon = b.status === 'over' ? '🚨 Over budget!' : b.status === 'warning' ? '⚠️ Near limit' : '✅ On track';
+            return `<div class="progress-wrap" style="padding:14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;">
+      <div class="progress-header">
+        <div class="progress-label">${b.category_icon} ${b.category_name}</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:0.75rem;color:var(--text-muted);">${formatCurrency(b.actual)} / ${formatCurrency(b.monthly_limit)}</span>
+          <span style="font-size:0.73rem;">${statusIcon}</span>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBudget(${b.id})">🗑</button>
+        </div>
+      </div>
+      <div class="progress-bar-track" style="margin-top:8px;">
+        <div class="progress-bar-fill ${cls}" style="width:${Math.min(b.percentage, 100)}%;"></div>
+      </div>
+      <div style="font-size:0.73rem;color:var(--text-muted);margin-top:4px;">${b.percentage}% used</div>
+    </div>`;
+        }).join('');
+    }
+
+    async function deleteBudget(id) {
+        if (!confirm('Remove this budget?')) return;
+        const res = await fetch(`/api/budgets/${id}/`, { method: 'DELETE' });
+        if (res.ok) { showToast('Budget removed', 'success'); loadBudgets(); }
+    }
+
+    async function loadCategories() {
+        const res = await fetch('/api/categories/');
+        const data = await res.json();
+        const sel = document.getElementById('b-cat');
+        sel.innerHTML = '<option value="">Select category…</option>';
+        data.categories.filter(c => c.category_type === 'expense').forEach(c => {
+            const o = document.createElement('option');
+            o.value = c.name;
+            o.textContent = `${c.icon} ${c.name}`;
+            sel.appendChild(o);
+        });
+    }
+
+    async function submitBudget(e) {
+        e.preventDefault();
+        const mv = document.getElementById('b-month').value;
+        const [m, y] = mv.split('-');
+        const btn = document.getElementById('budget-submit-btn');
+        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+
+        const payload = {
+            category_name: document.getElementById('b-cat').value,
+            monthly_limit: document.getElementById('b-limit').value,
+            month: parseInt(m), year: parseInt(y),
+        };
+
+        try {
+            const res = await fetch('/api/budgets/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                showToast('Budget saved', 'success');
+                document.getElementById('budget-form').reset();
+                document.getElementById('b-month').value = document.getElementById('budget-month').value;
+                loadBudgets();
+            } else { showToast('Failed to save budget', 'error'); }
+        } finally { btn.disabled = false; btn.textContent = 'Save Budget'; }
+    }
+
+    loadCategories();
+    loadBudgets();
+</script>
+{% endblock %}

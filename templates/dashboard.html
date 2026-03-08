@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FinanceAI{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block topbar_actions %}
+<a href="/transactions/" class="btn btn-primary btn-sm">+ Add Transaction</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-title" style="margin-bottom:14px;">This Month</div>
+    <div class="grid-2" style="gap:10px;">
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Income</div>
+            <div id="s-income" style="font-size:1.1rem;font-weight:700;">—</div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Expense</div>
+            <div id="s-expense" style="font-size:1.1rem;font-weight:700;">—</div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Net</div>
+            <div id="s-net" style="font-size:1.1rem;font-weight:700;">—</div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Savings Rate</div>
+            <div id="s-savings" style="font-size:1.1rem;font-weight:700;">—</div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-title">AI Insights</div>
+    <div class="insight-list" id="insights-list" style="margin-top:10px;">
+        <div class="skeleton" style="height:40px;"></div>
+        <div class="skeleton" style="height:40px;"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Recent Transactions</span>
+        <a href="/transactions/" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+    <div class="transaction-list" id="recent-list" style="margin-top:12px;">
+        <div class="skeleton" style="height:60px;"></div>
+        <div class="skeleton" style="height:60px;"></div>
+        <div class="skeleton" style="height:60px;"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadDashboard() {
+        try {
+            const [dashRes, txRes] = await Promise.all([
+                fetch('/api/ai/dashboard/'),
+                fetch('/api/transactions/?'),
+            ]);
+
+            const dash = await dashRes.json();
+            const txData = await txRes.json();
+
+            const s = dash.summary;
+            document.getElementById('s-income').textContent = formatCurrency(s.income);
+            document.getElementById('s-expense').textContent = formatCurrency(s.expense);
+            document.getElementById('s-net').textContent = formatCurrency(s.net);
+            document.getElementById('s-savings').textContent = s.savings_rate + '%';
+
+            const insightEl = document.getElementById('insights-list');
+            insightEl.innerHTML = dash.insights.length
+                ? dash.insights.map(i => `<div class="insight-item">${i}</div>`).join('')
+                : '<div class="insight-item">Add transactions to see insights.</div>';
+
+            const recent = (txData.transactions || []).slice(0, 5);
+            const listEl = document.getElementById('recent-list');
+            listEl.innerHTML = recent.length ? recent.map(renderTx).join('') :
+                '<div class="empty-state"><p>No transactions yet</p></div>';
+        } catch (e) {
+            showToast('Unable to load dashboard data', 'error');
+        }
+    }
+
+    function renderTx(t) {
+        const sign = t.transaction_type === 'income' ? '+' : '-';
+        const cls = t.transaction_type;
+        return `
+  <div class="transaction-item">
+    <div class="t-icon">${t.category_icon}</div>
+    <div class="t-info">
+      <div class="t-desc">${t.description}</div>
+      <div class="t-meta">${t.category_name} · ${t.date}</div>
+    </div>
+    <div class="t-amount ${cls}">${sign}${formatCurrency(t.amount)}</div>
+  </div>`;
+    }
+
+    loadDashboard();
+</script>
+{% endblock %}

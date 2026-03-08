@@ -1,0 +1,93 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Finance Tracker{% endblock %}</title>
+  <meta name="description" content="AI-powered personal finance tracker — track expenses, budgets, and spending predictions.">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">💹</div>
+    <span>FinanceAI</span>
+  </div>
+
+  <div class="nav-section-label">Main</div>
+  <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}">
+    <span class="nav-icon">📊</span> Dashboard
+  </a>
+  <a href="/transactions/" class="nav-link {% block nav_transactions %}{% endblock %}">
+    <span class="nav-icon">💳</span> Transactions
+  </a>
+  <a href="/analytics/" class="nav-link {% block nav_analytics %}{% endblock %}">
+    <span class="nav-icon">📈</span> Analytics
+  </a>
+  <a href="/budgets/" class="nav-link {% block nav_budgets %}{% endblock %}">
+    <span class="nav-icon">🎯</span> Budgets
+  </a>
+
+  <div class="nav-section-label" style="margin-top:16px;">System</div>
+  <a href="/admin/" class="nav-link" target="_blank">
+    <span class="nav-icon">⚙️</span> Admin Panel
+  </a>
+
+  <div class="sidebar-footer">
+    <div>FinanceAI v1.0</div>
+    <div style="margin-top:3px;">Powered by Django + AI</div>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <header class="topbar">
+    <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+    <div class="topbar-right">
+      <div class="topbar-date" id="topbar-date"></div>
+      {% block topbar_actions %}{% endblock %}
+    </div>
+  </header>
+
+  <div class="page-content">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  // Date display
+  const d = new Date();
+  document.getElementById('topbar-date').textContent =
+    d.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+
+  // Toast utility
+  function showToast(msg, type='success') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = msg;
+    document.getElementById('toast-container').appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
+  }
+
+  // Format currency
+  function formatCurrency(n) {
+    return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Chart.js global defaults
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+  Chart.defaults.font.family = "'Inter', sans-serif";
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>
